@@ -162,10 +162,12 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     response = await query_model(CHAIRMAN_MODEL, messages)
 
     if response is None:
-        # Fallback if chairman fails
+        print(f"Chairman model '{CHAIRMAN_MODEL}' failed. Check backend logs for details.")
+        # Fallback: use the first stage1 response as the synthesis
+        fallback_response = stage1_results[0]['response'] if stage1_results else "All models failed."
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "response": f"⚠️ Chairman model ({CHAIRMAN_MODEL}) failed to respond — check backend logs. Showing top council response as fallback:\n\n{fallback_response}"
         }
 
     return {

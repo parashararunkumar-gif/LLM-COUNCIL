@@ -38,18 +38,28 @@ async def query_model(
                 headers=headers,
                 json=payload
             )
-            response.raise_for_status()
+
+            if not response.is_success:
+                print(f"Error querying model {model}: HTTP {response.status_code} - {response.text}")
+                return None
 
             data = response.json()
+
+            # OpenRouter may return an error in the JSON body even with 200
+            if 'error' in data:
+                print(f"Error querying model {model}: {data['error']}")
+                return None
+
             message = data['choices'][0]['message']
+            content = message.get('content') or ''
 
             return {
-                'content': message.get('content'),
+                'content': content,
                 'reasoning_details': message.get('reasoning_details')
             }
 
     except Exception as e:
-        print(f"Error querying model {model}: {e}")
+        print(f"Error querying model {model}: {type(e).__name__}: {e}")
         return None
 
 
