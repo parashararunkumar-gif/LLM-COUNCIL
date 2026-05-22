@@ -5,89 +5,124 @@
 const API_BASE = 'http://localhost:8001';
 
 export const api = {
-  /**
-   * List all conversations.
-   */
   async listConversations() {
     const response = await fetch(`${API_BASE}/api/conversations`);
-    if (!response.ok) {
-      throw new Error('Failed to list conversations');
-    }
+    if (!response.ok) throw new Error('Failed to list conversations');
     return response.json();
   },
 
-  /**
-   * Create a new conversation.
-   */
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
+    if (!response.ok) throw new Error('Failed to create conversation');
     return response.json();
   },
 
-  /**
-   * Get a specific conversation.
-   */
   async getConversation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`);
+    if (!response.ok) throw new Error('Failed to get conversation');
+    return response.json();
+  },
+
+  async exportConversationDocx(conversationId, filename) {
     const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
+      `${API_BASE}/api/conversations/${conversationId}/export/docx`
     );
+    if (!response.ok) throw new Error(`Export failed (${response.status})`);
+    const blob = await response.blob();
+    const suggestedName = ((filename || 'conversation').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)) + '.docx';
+
+    if (window.showSaveFilePicker) {
+      try {
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{
+            description: 'Word Document',
+            accept: {
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            },
+          }],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // user cancelled — do nothing
+        // fall through to anchor fallback on other errors
+      }
+    }
+
+    // Fallback: download to default downloads folder
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  },
+
+  async deleteConversation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete conversation');
+    return response.json();
+  },
+
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE}/api/upload`, {
+      method: 'POST',
+      body: formData,
+    });
     if (!response.ok) {
-      throw new Error('Failed to get conversation');
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to upload file');
     }
     return response.json();
   },
 
-  /**
-   * Send a message in a conversation.
-   */
   async sendMessage(conversationId, content) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       }
     );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+    if (!response.ok) throw new Error('Failed to send message');
     return response.json();
   },
 
   /**
    * Send a message and receive streaming updates.
-   * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
-   * @param {function} onEvent - Callback function for each event: (eventType, data) => void
-   * @returns {Promise<void>}
+   * @param {string} conversationId
+   * @param {string} content
+   * @param {function} onEvent - (eventType, data) => void
+   * @param {string|null} fileContext - optional extracted file text
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, onEvent, fileContext = null) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, file_context: fileContext }),
       }
     );
 
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+    if (!response.ok) throw new Error('Failed to send message');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
